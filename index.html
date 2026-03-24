@@ -597,8 +597,11 @@
     <div class="auth-sub">Access restricted to authorized team members.</div>
   </div>
 </div>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
 <script>
 (function() {
+  emailjs.init('4XxNZU9Ir5MM1Ylt_');
+
   function doLogin() {
     var pw = document.getElementById("password-input").value;
     if (pw === "upstart2024") {
@@ -898,8 +901,16 @@ function renderOnboard() {
           </div>
         </div>
         <div class="field form-full">
-          <label>Start Date</label>
-          <input type="date" id="ob-date" />
+          <label>Billing Start Date</label>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+            <input type="text" id="ob-date-display" placeholder="MM/DD/YYYY"
+              style="width:160px;"
+              oninput="syncDateFromText(this.value)"
+            />
+            <input type="date" id="ob-date" style="width:180px;" oninput="syncDateFromPicker(this.value)" />
+            <div style="display:flex;gap:6px;flex-wrap:wrap;" id="quick-dates"></div>
+          </div>
+          <div style="font-size:11px;color:var(--text-3);margin-top:4px;">Billing typically starts on the 1st of the month</div>
         </div>
         <div class="field form-full">
           <label>Notes (optional)</label>
@@ -922,9 +933,44 @@ function renderOnboard() {
     </div>
   `;
 
-  // Set today's date
-  const today = new Date().toISOString().split('T')[0];
-  document.getElementById('ob-date').value = today;
+  // Set default to next 1st of month (or today if today is the 1st)
+  const now = new Date();
+  let firstOfMonth;
+  if (now.getDate() === 1) {
+    firstOfMonth = now;
+  } else {
+    firstOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  }
+  const isoDate = firstOfMonth.toISOString().split('T')[0];
+  document.getElementById('ob-date').value = isoDate;
+  document.getElementById('ob-date-display').value = formatDateUS(isoDate);
+
+  // Build quick-pick buttons for next 3 first-of-months
+  const quickEl = document.getElementById('quick-dates');
+  for (let i = 0; i < 3; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() + i + (now.getDate() === 1 ? 0 : 1), 1);
+    const iso = d.toISOString().split('T')[0];
+    const label = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-ghost';
+    btn.style.cssText = 'font-size:12px;padding:5px 10px;';
+    btn.textContent = label;
+    btn.onclick = () => {
+      document.getElementById('ob-date').value = iso;
+      document.getElementById('ob-date-display').value = formatDateUS(iso);
+      document.querySelectorAll('#quick-dates button').forEach(b => b.style.background = '');
+      btn.style.background = 'var(--accent-light)';
+      btn.style.color = 'var(--accent)';
+      btn.style.borderColor = 'var(--accent)';
+    };
+    if (iso === isoDate) {
+      btn.style.background = 'var(--accent-light)';
+      btn.style.color = 'var(--accent)';
+      btn.style.borderColor = 'var(--accent)';
+    }
+    quickEl.appendChild(btn);
+  }
 }
 
 let selectedDesk = null;
@@ -1063,21 +1109,38 @@ async function executeStep(step, member, mode) {
 
   const apiStatus = getApiStatus(step.tag);
 
-  // Gmail steps
+  // Email steps via EmailJS
   if (step.tag === 'gmail') {
-    if (!settings.gmail_configured) {
-      const isWelcome = step.id === 'welcome_email';
-      const subj = fillTemplate(isWelcome ? templates.welcome_subject : (step.id === 'unico_email' ? templates.unico_subject : templates.offboard_subject), member, deskLabel, dateStr);
-      const body = fillTemplate(isWelcome ? templates.welcome_body : (step.id === 'unico_email' ? templates.unico_body : templates.offboard_body), member, deskLabel, dateStr);
-      const to = step.id === 'welcome_email' ? member.email : (settings.unico_email || 'unico@unicoaccess.com');
+    const isWelcome = step.id === 'welcome_email';
+    const isUnico = step.id === 'unico_email';
+    const isOffboard = step.id === 'offboard_email';
+    const subjTemplate = isWelcome ? templates.welcome_subject : isUnico ? templates.unico_subject : templates.offboard_subject;
+    const bodyTemplate = isWelcome ? templates.welcome_body : isUnico ? templates.unico_body : templates.offboard_body;
+    const subj = fillTemplate(subjTemplate, member, deskLabel, dateStr);
+    const body = fillTemplate(bodyTemplate, member, deskLabel, dateStr);
+    const to = isWelcome ? member.email : (settings.unico_email || '');
+
+    if (!settings.emailjs_service_id || !settings.emailjs_public_key) {
       const mailtoUrl = `mailto:${to}?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`;
       return {
         status: 'manual',
-        note: `Gmail not configured — <a href="${mailtoUrl}" style="color:inherit">click to open draft in Mail</a>`
+        note: `EmailJS not configured — <a href="${mailtoUrl}" style="color:inherit">click to open draft in Mail</a>`
       };
     }
-    // Would call Gmail API here
-    return { status: 'done', note: `Email sent to ${step.id === 'welcome_email' ? member.email : settings.unico_email || '[unico address]'}` };
+
+    const templateId = isWelcome ? settings.emailjs_welcome_template : settings.emailjs_unico_template;
+    try {
+      await emailjs.send(
+        settings.emailjs_service_id,
+        templateId,
+        { to_email: to, subject: subj, body: body },
+        settings.emailjs_public_key
+      );
+      return { status: 'done', note: `Email sent to ${to}` };
+    } catch(e) {
+      const mailtoUrl = `mailto:${to}?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`;
+      return { status: 'error', note: `EmailJS error: ${e.text || e.message} — <a href="${mailtoUrl}" style="color:inherit">open draft in Mail</a>` };
+    }
   }
 
   // API steps — check config
@@ -1424,6 +1487,14 @@ function renderSettings() {
     </div>
 
     <div class="card">
+      <div class="card-title">EmailJS</div>
+      ${settingRow('emailjs_service_id', 'Service ID', 'service_k9ja0vu', 'text', 'EmailJS dashboard → Email Services')}
+      ${settingRow('emailjs_welcome_template', 'Welcome Email Template ID', 'template_nt37x0u', 'text', 'Template for new member welcome email')}
+      ${settingRow('emailjs_unico_template', 'Unico Template ID', 'template_a823ucb', 'text', 'Template for Unico building access request')}
+      ${settingRow('emailjs_public_key', 'Public Key', '4XxNZU9Ir5MM1Ylt_', 'password', 'EmailJS dashboard → Account → General')}
+    </div>
+
+    <div class="card">
       <div class="card-title">Stripe</div>
       ${settingRow('stripe_key', 'Secret Key', 'sk_live_...', 'password', 'From Stripe Dashboard → Developers → API keys')}
       ${settingRow('stripe_price_floating', 'Floating Desk Price ID', 'price_...', 'text', 'Stripe Price ID for Big Pink Floating Desk')}
@@ -1496,7 +1567,7 @@ function toggleVis(id, btn) {
 function saveSetting(key, val) { settings[key] = val; saveSettings(); }
 
 function saveAllSettings() {
-  const keys = ['stripe_key','stripe_price_floating','stripe_price_dedicated','hubspot_key','sheets_id','google_key','signrequest_key','signrequest_doc_url','unico_email','from_email'];
+  const keys = ['stripe_key','stripe_price_floating','stripe_price_dedicated','hubspot_key','sheets_id','google_key','signrequest_key','signrequest_doc_url','unico_email','from_email','emailjs_service_id','emailjs_welcome_template','emailjs_unico_template','emailjs_public_key'];
   keys.forEach(k => {
     const el = document.getElementById(`setting-${k}`);
     if (el) settings[k] = el.value.trim();
@@ -1671,6 +1742,41 @@ function importCSV(input) {
   reader.readAsText(file);
 }
 
+// ─── Date Helpers ────────────────────────────────────────────────────────────
+function formatDateUS(isoDate) {
+  if (!isoDate) return '';
+  const [y, m, d] = isoDate.split('-');
+  return `${m}/${d}/${y}`;
+}
+
+function parseUSDate(usDate) {
+  if (!usDate) return '';
+  const parts = usDate.replace(/[^0-9/]/g, '').split('/');
+  if (parts.length === 3) {
+    const [m, d, y] = parts;
+    if (m && d && y && y.length === 4) {
+      return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+    }
+  }
+  return '';
+}
+
+function syncDateFromText(val) {
+  const iso = parseUSDate(val);
+  if (iso) {
+    document.getElementById('ob-date').value = iso;
+  }
+}
+
+function syncDateFromPicker(val) {
+  document.getElementById('ob-date-display').value = formatDateUS(val);
+  document.querySelectorAll('#quick-dates button').forEach(b => {
+    b.style.background = '';
+    b.style.color = '';
+    b.style.borderColor = '';
+  });
+}
+
 // ─── Export ──────────────────────────────────────────────────────────────────
 function exportCSV() {
   const headers = ['First Name', 'Last Name', 'Email', 'Company', 'Membership Type', 'Status', 'Signed Pledge', 'Start Date', 'Added'];
@@ -1729,6 +1835,13 @@ function handleLogout() {
   document.getElementById('user-pill').style.display = 'none';
   document.getElementById('password-input').value = '';
 }
+
+// ─── Pre-populate EmailJS defaults ──────────────────────────────────────────
+if (!settings.emailjs_service_id) settings.emailjs_service_id = 'service_k9ja0vu';
+if (!settings.emailjs_welcome_template) settings.emailjs_welcome_template = 'template_nt37x0u';
+if (!settings.emailjs_unico_template) settings.emailjs_unico_template = 'template_a823ucb';
+if (!settings.emailjs_public_key) settings.emailjs_public_key = '4XxNZU9Ir5MM1Ylt_';
+saveSettings();
 
 // ─── Init ────────────────────────────────────────────────────────────────────
 // Pre-load roster if no members exist yet
