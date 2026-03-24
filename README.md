@@ -58,11 +58,6 @@ The app is protected by a password. The default password is:
 XXXXXXXX
 
 
-To change the password, open index.html in any text editor (TextEdit on Mac, Notepad on Windows), find this line near the bottom of the file, and change the value:
-
-const APP_PASSWORD = 'upstart2024';
-
-
 After changing it, re-upload the file to GitHub following the update steps above.
 
 ℹ️  The password is stored in plain text in the HTML file. This is appropriate for a personal internal tool. Do not use a password you use elsewhere.
