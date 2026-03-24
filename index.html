@@ -591,9 +591,8 @@
     <div class="auth-logo-mark">Big Pink</div>
     <div class="auth-logo-name">UpStart Collective</div>
     <input type="password" id="password-input" class="auth-btn" placeholder="Enter password"
-      style="background:var(--bg);color:var(--text);border:1px solid var(--border);text-align:left;cursor:text;margin-bottom:10px;letter-spacing:0.1em;"
-      onkeydown="if(event.key==='Enter')checkPassword()" />
-    <button class="auth-btn" onclick="checkPassword()">Sign In</button>
+      style="background:var(--bg);color:var(--text);border:1px solid var(--border);text-align:left;cursor:text;margin-bottom:10px;letter-spacing:0.1em;" />
+    <button class="auth-btn" id="signin-btn">Sign In</button>
     <div id="auth-error" style="margin-top:12px;font-size:12px;color:#8B2020;display:none;">Incorrect password. Try again.</div>
     <div class="auth-sub">Access restricted to authorized team members.</div>
   </div>
@@ -1717,6 +1716,12 @@ netlifyIdentity.on('logout', () => {
   }
 })();
 if (sessionStorage.getItem('usc_auth') === '1') { handleLogin(); }
+
+// Wire up auth button via event listeners (more reliable than onclick)
+document.getElementById('signin-btn').addEventListener('click', checkPassword);
+document.getElementById('password-input').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') checkPassword();
+});
 </script>
 </body>
 </html>
