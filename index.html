@@ -644,6 +644,32 @@
 <div class="toast" id="toast"></div>
 
 <script>
+// ─── Auth (defined first so onclick handlers work immediately) ───────────────
+const APP_PASSWORD = 'upstart2024';
+
+function checkPassword() {
+  const input = document.getElementById('password-input').value;
+  const errEl = document.getElementById('auth-error');
+  if (input === APP_PASSWORD) {
+    sessionStorage.setItem('usc_auth', '1');
+    handleLogin();
+  } else {
+    errEl.style.display = 'block';
+    document.getElementById('password-input').value = '';
+    document.getElementById('password-input').focus();
+  }
+}
+
+// handleLogin defined at top of script
+
+function handleLogout() {
+  sessionStorage.removeItem('usc_auth');
+  document.getElementById('app-shell').classList.remove('visible');
+  document.getElementById('auth-gate').classList.add('visible');
+  document.getElementById('user-pill').style.display = 'none';
+  document.getElementById('password-input').value = '';
+}
+
 // ─── State ───────────────────────────────────────────────────────────────────
 let members = JSON.parse(localStorage.getItem('usc_members') || '[]');
 let settings = JSON.parse(localStorage.getItem('usc_settings') || '{}');
@@ -1461,29 +1487,7 @@ netlifyIdentity.on('logout', () => {
 });
 
 // Check if already logged in
-// ─── Password Auth ───────────────────────────────────────────────────────────
-const APP_PASSWORD = 'upstart2024';
-
-function checkPassword() {
-  const input = document.getElementById('password-input').value;
-  const errEl = document.getElementById('auth-error');
-  if (input === APP_PASSWORD) {
-    sessionStorage.setItem('usc_auth', '1');
-    handleLogin();
-  } else {
-    errEl.style.display = 'block';
-    document.getElementById('password-input').value = '';
-    document.getElementById('password-input').focus();
-  }
-}
-
-function handleLogout() {
-  sessionStorage.removeItem('usc_auth');
-  document.getElementById('app-shell').classList.remove('visible');
-  document.getElementById('auth-gate').classList.add('visible');
-  document.getElementById('user-pill').style.display = 'none';
-  document.getElementById('password-input').value = '';
-}
+// ─── Password Auth (defined at top of script) ───────────────────────────────
 
 // ─── Init ────────────────────────────────────────────────────────────────────
 if (sessionStorage.getItem('usc_auth') === '1') { handleLogin(); }
