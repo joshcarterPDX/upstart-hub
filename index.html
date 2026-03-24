@@ -789,9 +789,6 @@ You've been set up with a {{desk_type}} membership. Your billing is handled thro
 **Building Access**
 Download the Unico app to access the building. Once your account is activated (we'll let you know), you'll be able to enter using the app on your phone.
 
-**Community Platforms**
-- Slack: Check your email for an invite to join our Slack workspace
-- Circle: You'll receive a separate invite to our Circle community
 
 **Your Member Handbook**
 Please review and sign the member handbook / community pledge — you'll receive a SignRequest link shortly.
@@ -986,8 +983,6 @@ function resetOnboard() {
 }
 
 const ONBOARD_STEPS = [
-  { id: 'slack', name: 'Send Slack Invite', desc: 'Invite to UpStart Collective Slack workspace', type: 'manual', tag: 'manual' },
-  { id: 'circle', name: 'Send Circle Invite', desc: 'Invite to Circle community platform', type: 'manual', tag: 'manual' },
   { id: 'stripe', name: 'Add to Stripe', desc: 'Create customer and assign membership subscription', type: 'api', tag: 'stripe' },
   { id: 'welcome_email', name: 'Send Welcome Email', desc: 'Welcome email with space instructions, Unico app, and Stripe payment link', type: 'gmail', tag: 'gmail' },
   { id: 'hubspot', name: 'Add to HubSpot', desc: 'Add contact to newsletter list', type: 'api', tag: 'hubspot' },
@@ -999,15 +994,12 @@ const OFFBOARD_STEPS = [
   { id: 'stripe_cancel', name: 'Cancel Stripe Subscription', desc: 'Cancel membership billing at period end', type: 'api', tag: 'stripe' },
   { id: 'offboard_email', name: 'Email Unico to Remove Access', desc: 'Request Unico deactivate building access', type: 'gmail', tag: 'gmail' },
   { id: 'hubspot_update', name: 'Unsubscribe from Newsletter', desc: 'Remove from active HubSpot marketing list', type: 'api', tag: 'hubspot' },
-  { id: 'slack_remove', name: 'Remove from Slack', desc: 'Deactivate Slack account', type: 'manual', tag: 'manual' },
-  { id: 'circle_remove', name: 'Remove from Circle', desc: 'Remove from Circle community', type: 'manual', tag: 'manual' },
 ];
 
 function getApiStatus(tag) {
   const checks = {
     stripe: settings.stripe_key,
     hubspot: settings.hubspot_key,
-    sheets: settings.sheets_id && settings.google_key,
     signrequest: settings.signrequest_key,
     gmail: settings.gmail_configured,
   };
@@ -1100,12 +1092,7 @@ async function executeStep(step, member, mode) {
   const dateStr = member.start_date || new Date().toISOString().split('T')[0];
 
   // Manual steps
-  if (step.type === 'manual') {
-    return {
-      status: 'manual',
-      note: `⚠ Manual step required — open ${step.id.includes('slack') ? 'Slack' : 'Circle'} and send invite to ${member.email}`
-    };
-  }
+
 
   const apiStatus = getApiStatus(step.tag);
 
@@ -1170,9 +1157,7 @@ async function executeStep(step, member, mode) {
   if (step.id === 'hubspot' || step.id === 'hubspot_update') {
     return await callHubspot(member, step.id === 'hubspot_update');
   }
-  if (step.id === 'sheets' || step.id === 'sheets_update') {
-    return await callSheets(member, mode);
-  }
+
   if (step.id === 'signrequest') {
     return await callSignrequest(member);
   }
@@ -1278,28 +1263,6 @@ async function callHubspot(member, isRemove) {
   }
 }
 
-async function callSheets(member, mode) {
-  try {
-    const values = mode === 'onboard'
-      ? [[member.first, member.last, member.email, member.company || '', member.desk === 'floating' ? 'Big Pink Floating Desk' : 'Big Pink Dedicated Desk', member.start_date, 'Active']]
-      : [[member.first, member.last, member.email, '', '', '', 'Inactive', new Date().toISOString().split('T')[0]]];
-
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${settings.sheets_id}/values/MASTER!A:G:append?valueInputOption=USER_ENTERED`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${settings.google_key}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ values })
-    });
-    const data = await res.json();
-    if (data.error) return { status: 'error', note: data.error.message };
-    return { status: 'done', note: `Row added to MASTER sheet` };
-  } catch(e) {
-    return { status: 'error', note: e.message };
-  }
-}
 
 async function callSignrequest(member) {
   try {
