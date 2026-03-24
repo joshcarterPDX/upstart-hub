@@ -1027,10 +1027,12 @@ async function runOnboarding() {
   if (!selectedDesk) { showToast('Please select a desk type'); return; }
   if (!email.includes('@')) { showToast('Please enter a valid email'); return; }
 
+  const deskTypeMap = { floating: 'Floating Desk', dedicated: 'Dedicated Desk', partner: 'Partner', community: 'Community Member' };
   const member = {
     id: Date.now().toString(),
     first, last, email, company,
     desk: selectedDesk,
+    membership_type: deskTypeMap[selectedDesk] || selectedDesk,
     start_date: date,
     status: 'active',
     added: new Date().toISOString()
