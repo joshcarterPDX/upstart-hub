@@ -346,6 +346,8 @@
   .badge-floating { background: var(--pending-light); color: var(--pending); }
   .badge-dedicated { background: var(--accent-light); color: var(--accent); }
   .badge-active { background: var(--success-light); color: var(--success); }
+  .badge-partner { background: #F3F0FD; color: #4C3D9E; }
+  .badge-community { background: var(--amber-light); color: var(--amber); }
   .badge-inactive { background: var(--surface2); color: var(--text-3); }
 
   .action-btn {
@@ -782,8 +784,8 @@ function renderOnboard() {
           <input type="text" id="ob-company" placeholder="Acme Inc." />
         </div>
         <div class="field form-full">
-          <label>Desk Type</label>
-          <div class="desk-options" id="desk-options">
+          <label>Membership Type</label>
+          <div class="desk-options" id="desk-options" style="grid-template-columns:1fr 1fr;">
             <label class="desk-option" onclick="selectDesk(this,'floating')">
               <input type="radio" name="desk" value="floating">
               <div class="desk-name">Floating Desk</div>
@@ -793,6 +795,16 @@ function renderOnboard() {
               <input type="radio" name="desk" value="dedicated">
               <div class="desk-name">Dedicated Desk</div>
               <div class="desk-price">Big Pink Dedicated Desk</div>
+            </label>
+            <label class="desk-option" onclick="selectDesk(this,'partner')">
+              <input type="radio" name="desk" value="partner">
+              <div class="desk-name">Partner</div>
+              <div class="desk-price">Community Partner</div>
+            </label>
+            <label class="desk-option" onclick="selectDesk(this,'community')">
+              <input type="radio" name="desk" value="community">
+              <div class="desk-name">Community Member</div>
+              <div class="desk-price">Community Access</div>
             </label>
           </div>
         </div>
@@ -1154,44 +1166,67 @@ function fillTemplate(tmpl, member, desk, date) {
 }
 
 // ─── Roster View ─────────────────────────────────────────────────────────────
+function getDeskBadgeClass(desk) {
+  const map = { floating: 'badge-floating', dedicated: 'badge-dedicated', partner: 'badge-partner', community: 'badge-community' };
+  return map[desk] || 'badge-floating';
+}
+
 function renderRoster() {
   const el = document.getElementById('main-content');
+  const active = members.filter(m => m.status === 'active');
+  const inactive = members.filter(m => m.status === 'inactive');
+  const pledgeSigned = active.filter(m => m.signed_pledge).length;
+  const currentFilter = window._rosterFilter || 'active';
+  const searchTerm = (window._rosterSearch || '').toLowerCase();
+
+  const typeCount = {};
+  active.forEach(m => { const t = m.membership_type || m.desk; typeCount[t] = (typeCount[t] || 0) + 1; });
+
+  let filtered = currentFilter === 'active' ? active : currentFilter === 'inactive' ? inactive : members;
+  if (searchTerm) filtered = filtered.filter(m => (m.first+' '+m.last+' '+m.email+' '+(m.membership_type||'')).toLowerCase().includes(searchTerm));
+
   el.innerHTML = `
     <div class="page-header">
       <div class="page-title">Member Roster</div>
-      <div class="page-sub">${members.length} total member${members.length !== 1 ? 's' : ''}</div>
+      <div class="page-sub">${active.length} active &middot; ${inactive.length} inactive &middot; ${pledgeSigned} pledges signed</div>
     </div>
-    <div class="card" style="padding:0; overflow:hidden;">
-      ${members.length === 0 ? `
-        <div class="empty-state">
-          <div class="empty-state-icon">◎</div>
-          <p>No members yet — onboard your first member to see them here</p>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px;">
+      ${Object.entries(typeCount).map(([type, count]) => `
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;">
+          <div style="font-size:11px;color:var(--text-3);margin-bottom:4px;font-family:var(--mono)">${type}</div>
+          <div style="font-size:22px;font-weight:600">${count}</div>
         </div>
-      ` : `
+      `).join('')}
+    </div>
+    <div style="display:flex;gap:10px;margin-bottom:16px;align-items:center;">
+      <input type="text" placeholder="Search members..."
+        style="flex:1;padding:8px 14px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--sans);font-size:14px;background:var(--surface);color:var(--text);outline:none;"
+        value="${window._rosterSearch || ''}"
+        oninput="window._rosterSearch=this.value;renderRoster()" />
+      <select onchange="window._rosterFilter=this.value;renderRoster()"
+        style="padding:8px 14px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--sans);font-size:14px;background:var(--surface);color:var(--text);outline:none;">
+        <option value="active" ${currentFilter==='active'?'selected':''}>Active</option>
+        <option value="inactive" ${currentFilter==='inactive'?'selected':''}>Inactive</option>
+        <option value="all" ${currentFilter==='all'?'selected':''}>All</option>
+      </select>
+      <input type="file" accept=".csv" style="display:none" id="csv-upload" onchange="importCSV(this)" />
+      <button class="btn btn-ghost" style="font-size:13px;padding:8px 14px;" onclick="document.getElementById('csv-upload').click()">Import CSV</button>
+    </div>
+    <div class="card" style="padding:0;overflow:hidden;">
+      ${filtered.length === 0 ? `<div class="empty-state"><div class="empty-state-icon">&#9711;</div><p>No members found</p></div>` : `
         <table class="members-table">
-          <thead>
-            <tr>
-              <th>Member</th>
-              <th>Desk</th>
-              <th>Start Date</th>
-              <th>Status</th>
-              <th></th>
-            </tr>
-          </thead>
+          <thead><tr><th>Member</th><th>Type</th><th>Pledge</th><th>Status</th><th></th></tr></thead>
           <tbody>
-            ${members.map(m => `
+            ${filtered.map(m => `
               <tr>
                 <td>
                   <div class="member-name">${m.first} ${m.last}</div>
                   <div class="member-email">${m.email}</div>
-                  ${m.company ? `<div style="font-size:11px;color:var(--text-3)">${m.company}</div>` : ''}
                 </td>
-                <td><span class="badge ${m.desk === 'floating' ? 'badge-floating' : 'badge-dedicated'}">${m.desk}</span></td>
-                <td style="font-family:var(--mono);font-size:12px;color:var(--text-2)">${m.start_date || '—'}</td>
+                <td><span class="badge ${getDeskBadgeClass(m.desk)}">${m.membership_type || m.desk}</span></td>
+                <td style="font-size:13px;">${m.signed_pledge ? '<span style="color:var(--success)">&#10003; Signed</span>' : '<span style="color:var(--text-3)">&#8212;</span>'}</td>
                 <td><span class="badge ${m.status === 'active' ? 'badge-active' : 'badge-inactive'}">${m.status}</span></td>
-                <td>
-                  <button class="action-btn danger-btn" onclick="promptOffboard('${m.id}')">Offboard</button>
-                </td>
+                <td>${m.status === 'active' ? `<button class="action-btn danger-btn" onclick="promptOffboard('${m.id}')">Offboard</button>` : ''}</td>
               </tr>
             `).join('')}
           </tbody>
@@ -1200,6 +1235,7 @@ function renderRoster() {
     </div>
   `;
 }
+
 
 // ─── Offboard View ───────────────────────────────────────────────────────────
 function renderOffboard() {
@@ -1450,6 +1486,46 @@ function resetTemplatesDefault() {
   showToast('Templates reset to default');
 }
 
+// ─── CSV Import ──────────────────────────────────────────────────────────────
+function importCSV(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const lines = e.target.result.split('\n').filter(l => l.trim());
+    const header = lines[0].toLowerCase();
+    let imported = 0;
+    for (let i = 1; i < lines.length; i++) {
+      const cols = lines[i].split(',');
+      if (!cols[0] || !cols[0].trim()) continue;
+      const name = cols[0].trim();
+      const parts = name.split(' ');
+      const first = parts[0];
+      const last = parts.slice(1).join(' ');
+      const email = (cols[1] || '').trim();
+      const current = (cols[2] || '').trim();
+      const type = (cols[3] || '').trim();
+      const pledge = (cols[4] || '').trim();
+      if (!email || members.find(m => m.email.toLowerCase() === email.toLowerCase())) continue;
+      const deskMap = { 'Dedicated Desk':'dedicated','Floating Desk':'floating','Partner':'partner','Community Member':'community' };
+      members.push({
+        id: Date.now().toString() + i,
+        first, last, email, company: '',
+        desk: deskMap[type] || 'floating',
+        membership_type: type,
+        status: current === 'Yes' ? 'active' : 'inactive',
+        signed_pledge: pledge === 'Yes',
+        start_date: '', added: new Date().toISOString()
+      });
+      imported++;
+    }
+    saveMembers();
+    showToast(imported + ' members imported');
+    renderRoster();
+  };
+  reader.readAsText(file);
+}
+
 // ─── Utilities ───────────────────────────────────────────────────────────────
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
@@ -1490,6 +1566,14 @@ netlifyIdentity.on('logout', () => {
 // ─── Password Auth (defined at top of script) ───────────────────────────────
 
 // ─── Init ────────────────────────────────────────────────────────────────────
+// Pre-load roster if no members exist yet
+(function() {
+  const existing = localStorage.getItem('usc_members');
+  if (!existing || JSON.parse(existing).length === 0) {
+    localStorage.setItem('usc_members', JSON.stringify([{"id": "1000", "first": "Aaron", "last": "Ward", "email": "aaron@huckleberry.work", "company": "", "desk": "dedicated", "membership_type": "Dedicated Desk", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1001", "first": "Adama", "last": "Toure", "email": "adama.toure@sept.energy", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1002", "first": "Adedamola", "last": "Omotosho", "email": "damola.omotosho@gmail.com", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1003", "first": "Alan", "last": "Coppola", "email": "ajjcoppola@gmail.com", "company": "", "desk": "dedicated", "membership_type": "Dedicated Desk", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1004", "first": "Alex", "last": "Carll", "email": "alex@sundayplus.net", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1005", "first": "Allen", "last": "Guthier", "email": "allenguthier@gmail.com", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1006", "first": "Allie", "last": "Persitz", "email": "allie@dynamicevents.com", "company": "", "desk": "community", "membership_type": "Community Member", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1007", "first": "Andres", "last": "deLucca", "email": "andres@nwlights.com", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1008", "first": "Ann", "last": "Olinger", "email": "aolinger13@gmail.com", "company": "", "desk": "dedicated", "membership_type": "Dedicated Desk", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1009", "first": "Arsh", "last": "Haque", "email": "arsh@askhenna.com", "company": "", "desk": "partner", "membership_type": "Partner", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1010", "first": "Arun", "last": "Sirimalla", "email": "arun@coredefender.ai", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1011", "first": "Bailey", "last": "Romatoski", "email": "bailey@ourplace.community", "company": "", "desk": "dedicated", "membership_type": "Dedicated Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1012", "first": "Ben", "last": "Fleskes", "email": "benfleskes@gmail.com", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1013", "first": "Ben", "last": "Parish", "email": "ben@upstartcollective.org", "company": "", "desk": "partner", "membership_type": "Partner", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1014", "first": "Ben", "last": "West", "email": "ben.d.west@gmail.com", "company": "", "desk": "dedicated", "membership_type": "Dedicated Desk", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1015", "first": "Beverly", "last": "Scott", "email": "beverly@zelody.com", "company": "", "desk": "dedicated", "membership_type": "Dedicated Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1016", "first": "Bill", "last": "Bauman", "email": "bill@ntur.ai", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1017", "first": "Brady", "last": "Benware", "email": "brady@oxbowsoft.com", "company": "", "desk": "dedicated", "membership_type": "Dedicated Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1018", "first": "Brandon", "last": "Upchurch", "email": "brandonup@gmail.com", "company": "", "desk": "dedicated", "membership_type": "Dedicated Desk", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1019", "first": "Bobby", "last": "Napiltonia", "email": "bobbynap@gmail.com", "company": "", "desk": "partner", "membership_type": "Partner", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1020", "first": "Brent", "last": "Bullock", "email": "bbullock@perkinscoie.com", "company": "", "desk": "partner", "membership_type": "Partner", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1021", "first": "Cara", "last": "Turano", "email": "cara@oen.org", "company": "", "desk": "partner", "membership_type": "Partner", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1022", "first": "Chandana", "last": "Pulikallu", "email": "chandana@coredefender.ai", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1023", "first": "Chris", "last": "Schuermyer", "email": "Chris@oxbowsoft.com", "company": "", "desk": "dedicated", "membership_type": "Dedicated Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1024", "first": "Christopher", "last": "Brereton", "email": "rootchris66@gmail.com", "company": "", "desk": "partner", "membership_type": "Partner", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1025", "first": "Christopher", "last": "Jones", "email": "christopher@bonjones.com", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1026", "first": "Christopher", "last": "Rensel", "email": "chris@nua-labs.com", "company": "", "desk": "dedicated", "membership_type": "Dedicated Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1027", "first": "Cian", "last": "McCann", "email": "cian@nua-labs.com", "company": "", "desk": "dedicated", "membership_type": "Dedicated Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1028", "first": "Cliff", "last": "DeGroot", "email": "Cliff.DeGroot@hklaw.com", "company": "", "desk": "partner", "membership_type": "Partner", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1029", "first": "Damola", "last": "Omotosho", "email": "damola.omotosho@gmail.com", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1030", "first": "Dan", "last": "Sperring", "email": "dan@alignicp.com", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1031", "first": "Darren", "last": "Buckner", "email": "darren@workfrom.co", "company": "", "desk": "community", "membership_type": "Community Member", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1032", "first": "Dave", "last": "Miller", "email": "dave@troopiter.com", "company": "", "desk": "dedicated", "membership_type": "Dedicated Desk", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1033", "first": "David", "last": "Beach", "email": "beach@blurt.fm", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1034", "first": "Devin", "last": "Gaffney", "email": "devin@graze.social", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1035", "first": "Dominic", "last": " Cardoso", "email": "dominicscardoso@gmail.com", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1036", "first": "Doug", "last": "Gastich", "email": "doug@zelody.com", "company": "", "desk": "dedicated", "membership_type": "Dedicated Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1037", "first": "Duncan", "last": "Miller", "email": "duncan@rosecityrobotics.com", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1038", "first": "Dwayne", "last": "Johnson", "email": "dwayne@oregonif.org", "company": "", "desk": "partner", "membership_type": "Partner", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1039", "first": "Eileen", "last": "Brewer", "email": "efbrewer@gmail.com", "company": "", "desk": "community", "membership_type": "Community Member", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1040", "first": "Elaine", "last": "Hsieh", "email": "elaine.hsieh@techoregon.org", "company": "", "desk": "partner", "membership_type": "Partner", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1041", "first": "Fernando", "last": "Rojas", "email": "fernando@fre-studios.com", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1042", "first": "Gabriel", "last": "Temme", "email": "announcingangel@gmail.com", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1043", "first": "George", "last": "Zucker", "email": "georgez@astroparks.io", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1044", "first": "Gillian", "last": "Wildfire", "email": "gillian@fordje.com", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "inactive", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1045", "first": "Hunter", "last": "Oaks", "email": "hunter@oregonaiaccelerator.com", "company": "", "desk": "partner", "membership_type": "Partner", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1046", "first": "Jack", "last": "Phan", "email": "jack@jackphan.com", "company": "", "desk": "partner", "membership_type": "Partner", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1047", "first": "James", "last": "Clarke", "email": "yehmintai@gmail.com", "company": "", "desk": "community", "membership_type": "Community Member", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1048", "first": "Jaron", "last": "Heard", "email": "jaron@soonlist.com", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1049", "first": "Jason", "last": "Gorske", "email": "hello@lit-lids.com", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1050", "first": "Jason", "last": "Huang", "email": "jhuang@spacetoaststudios.com", "company": "", "desk": "dedicated", "membership_type": "Dedicated Desk", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1051", "first": "Jeff", "last": "Drilling", "email": "jd@yofetch.com", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1052", "first": "Jeff", "last": "Nickoloff", "email": "jeff.nickoloff@gmail.com", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1053", "first": "Joe", "last": "Cole", "email": "joe@rosecityrobotics.com", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1054", "first": "John", "last": "Grant", "email": "john@greenline.legal", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1055", "first": "Jonathan", "last": "Karon", "email": "jonathan@tappister.com", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1056", "first": "Josh", "last": "Farr", "email": "jfarr@sqwadhq.com", "company": "", "desk": "dedicated", "membership_type": "Dedicated Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1057", "first": "Julian", "last": "Dunn", "email": "jdunn@aquezada.com", "company": "", "desk": "community", "membership_type": "Community Member", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1058", "first": "Justin", "last": "Vendehey", "email": "justin@thread.app", "company": "", "desk": "community", "membership_type": "Community Member", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1059", "first": "Kasey", "last": "Carll", "email": "kasey@sundayplus.net", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1060", "first": "Kenna", "last": "Conklin", "email": "kenna@portlandmetrohub.org", "company": "", "desk": "partner", "membership_type": "Partner", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1061", "first": "Kevin", "last": "Guardia", "email": "kguardia7@gmail.com", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1062", "first": "Kristine", "last": "Campbell", "email": "kristine.campbell@outlook.com", "company": "", "desk": "community", "membership_type": "Community Member", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1063", "first": "Kyle", "last": "Kaiser", "email": "kylejkaiser@gmail.com", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1064", "first": "Lauren", "last": "Teague", "email": "lauren@fanwagn.com", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1065", "first": "Liz", "last": "Gabriel", "email": "liz@nearhear.app", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1066", "first": "Liz", "last": "Qian", "email": "lizqian2@gmail.com", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1067", "first": "Lulu", "last": "Dawson", "email": "lulu@portlandmetrohub.org", "company": "", "desk": "partner", "membership_type": "Partner", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1068", "first": "Mark", "last": "Grimes", "email": "mark.grimes@ned.com", "company": "", "desk": "community", "membership_type": "Community Member", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1069", "first": "Mark", "last": "Kleinhaus", "email": "mkleinhaus@gmail.com", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1070", "first": "Matt", "last": "Wood", "email": "matt@hi.institute", "company": "", "desk": "dedicated", "membership_type": "Dedicated Desk", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1071", "first": "Max", "last": "Porterkhamsy", "email": "max@epicurate.vip", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1072", "first": "Melody", "last": "Caron", "email": "melody.caron@gmail.com", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1073", "first": "Michael", "last": "Church", "email": "michael@perceiviq.ai", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1074", "first": "Michael", "last": "Halama", "email": "michael@rickshawllc.com", "company": "", "desk": "dedicated", "membership_type": "Dedicated Desk", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1075", "first": "Mirco", "last": "Fiaschi", "email": "mirco@foodiestash.com", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1076", "first": "Missy", "last": "Capone", "email": "misfit.capone@gmail.com", "company": "", "desk": "community", "membership_type": "Community Member", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1077", "first": "Muneer", "last": "Mubashir", "email": "muneer.mubashir@gmail.com", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1078", "first": "Nate", "last": "Frazier", "email": "nate@swellpdx.com", "company": "", "desk": "partner", "membership_type": "Partner", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1079", "first": "Nathan", "last": "Bell", "email": "nathan@meetvirginia.io", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1080", "first": "Nathan", "last": "Bowser", "email": "nathan@awesomefuture.studio", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1081", "first": "Ned", "last": "Hayes", "email": "nedhayes@gmail.com", "company": "", "desk": "dedicated", "membership_type": "Dedicated Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1082", "first": "Nick", "last": "Dean", "email": "nick@nickdean.co", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1083", "first": "Nick", "last": "Farina", "email": "nfarina@gmail.com", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1084", "first": "Nick", "last": "Lawson", "email": "nlawson@sqwadhq.com", "company": "", "desk": "dedicated", "membership_type": "Dedicated Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1085", "first": "Nick", "last": "Martin", "email": "nick.martin@brightfeed.io", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1086", "first": "Nya", "last": "Dinh", "email": "ndinh@sonatap.com", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1087", "first": "Rachel", "last": "Andrews", "email": "gravitycat99@gmail.com", "company": "", "desk": "dedicated", "membership_type": "Dedicated Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1088", "first": "Rhett", "last": "Acelar", "email": "rhett@historicprints.com", "company": "", "desk": "dedicated", "membership_type": "Dedicated Desk", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1089", "first": "Richard", "last": "Prasojo", "email": "richard.prasojo@gmail.com", "company": "", "desk": "dedicated", "membership_type": "Dedicated Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1090", "first": "Richie", "last": "Rasor", "email": "richie@fordje.com", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1091", "first": "Rick", "last": "Turoczy", "email": "rick@piepdx.com", "company": "", "desk": "community", "membership_type": "Community Member", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1092", "first": "Ronan", "last": "McCann", "email": "ronan@nua-labs.com", "company": "", "desk": "dedicated", "membership_type": "Dedicated Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1093", "first": "Ronda", "last": "Closner-Sensenig", "email": "ronda@springwaterglobal.com", "company": "", "desk": "community", "membership_type": "Community Member", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1094", "first": "Roy", "last": "Tal", "email": "roytyo@gmail.com", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1095", "first": "Rylee", "last": "O'Brien", "email": "rylee@oen.org", "company": "", "desk": "partner", "membership_type": "Partner", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1096", "first": "Saci", "last": "Minor", "email": "saci.minor@techoregon.org", "company": "", "desk": "partner", "membership_type": "Partner", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1097", "first": "Sam", "last": "Brier", "email": "sam.brier@gmail.com", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1098", "first": "Sam", "last": "Seymour", "email": "sseymour5@gmail.com", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1099", "first": "Sara", "last": "Love", "email": "hello@lichenleaf.com", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1100", "first": "Satish", "last": "Chamyvelumani", "email": "satish.chamyvelumani@gmail.com", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1101", "first": "Saxon", "last": " D'Aubin", "email": "saxon@yaktech.io", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1102", "first": "Scott", "last": "San Filippo", "email": "scott@blurt.fm", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1103", "first": "Shannon", "last": "Smith", "email": "shannon@yaktech.io", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1104", "first": "Shashi", "last": "Jain", "email": "skjain2@gmail.com", "company": "", "desk": "partner", "membership_type": "Partner", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1105", "first": "Skip", "last": "Newberry", "email": "skip.newberry@techoregon.org", "company": "", "desk": "partner", "membership_type": "Partner", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1106", "first": "Tea", "last": "Fihe", "email": "neonanvil@gmail.com", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1107", "first": "Teddy", "last": " Lehmann", "email": "tlehmann@criteria.dev", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1108", "first": "Tim", "last": "Homuth", "email": "timhomuth@gmail.com", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1109", "first": "Taylor", "last": "Jackson", "email": "taylor@generationsolar.us", "company": "", "desk": "floating", "membership_type": "Floating Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1110", "first": "Tyler", "last": "Wales", "email": "hello@tylerwales.com", "company": "", "desk": "dedicated", "membership_type": "Dedicated Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1111", "first": "Vik", "last": "Anantha", "email": "vik@secondsightsurgical.com", "company": "", "desk": "dedicated", "membership_type": "Dedicated Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1112", "first": "Yalda", "last": "Moshiri", "email": "yalda@oen.org", "company": "", "desk": "partner", "membership_type": "Partner", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1113", "first": "Yvonne", "last": "Smoker", "email": "SmokerY@prosperportland.us", "company": "", "desk": "partner", "membership_type": "Partner", "status": "active", "signed_pledge": false, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}, {"id": "1114", "first": "Zachary", "last": "Watson", "email": "zacharyosa@watsonep.com", "company": "", "desk": "dedicated", "membership_type": "Dedicated Desk", "status": "active", "signed_pledge": true, "start_date": "", "added": "2026-03-01T00:00:00.000Z"}]));
+    members = JSON.parse(localStorage.getItem('usc_members'));
+  }
+})();
 if (sessionStorage.getItem('usc_auth') === '1') { handleLogin(); }
 </script>
 </body>
