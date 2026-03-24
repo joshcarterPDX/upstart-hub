@@ -992,14 +992,12 @@ const ONBOARD_STEPS = [
   { id: 'welcome_email', name: 'Send Welcome Email', desc: 'Welcome email with space instructions, Unico app, and Stripe payment link', type: 'gmail', tag: 'gmail' },
   { id: 'hubspot', name: 'Add to HubSpot', desc: 'Add contact to newsletter list', type: 'api', tag: 'hubspot' },
   { id: 'signrequest', name: 'Send Handbook via SignRequest', desc: 'Send member handbook/pledge for e-signature', type: 'api', tag: 'signrequest' },
-  { id: 'sheets', name: 'Add to Master Google Sheet', desc: 'Append member row to the MASTER roster spreadsheet', type: 'api', tag: 'sheets' },
   { id: 'unico_email', name: 'Email Unico for Building Access', desc: 'Request Unico database entry so member app works', type: 'gmail', tag: 'gmail' },
 ];
 
 const OFFBOARD_STEPS = [
   { id: 'stripe_cancel', name: 'Cancel Stripe Subscription', desc: 'Cancel membership billing at period end', type: 'api', tag: 'stripe' },
   { id: 'offboard_email', name: 'Email Unico to Remove Access', desc: 'Request Unico deactivate building access', type: 'gmail', tag: 'gmail' },
-  { id: 'sheets_update', name: 'Update Master Sheet', desc: 'Mark member as inactive in MASTER Google Sheet', type: 'api', tag: 'sheets' },
   { id: 'hubspot_update', name: 'Unsubscribe from Newsletter', desc: 'Remove from active HubSpot marketing list', type: 'api', tag: 'hubspot' },
   { id: 'slack_remove', name: 'Remove from Slack', desc: 'Deactivate Slack account', type: 'manual', tag: 'manual' },
   { id: 'circle_remove', name: 'Remove from Circle', desc: 'Remove from Circle community', type: 'manual', tag: 'manual' },
@@ -1141,7 +1139,7 @@ async function executeStep(step, member, mode) {
       await emailjs.send(
         settings.emailjs_service_id,
         templateId,
-        { to_email: to, subject: subj, body: body },
+        { to_email: to, to: to, to_name: `${member.first} ${member.last}`, subject: subj, message: body, body: body, from_name: 'UpStart Collective' },
         settings.emailjs_public_key
       );
       return { status: 'done', note: `Email sent to ${to}` };
@@ -1161,6 +1159,9 @@ async function executeStep(step, member, mode) {
 
   // Simulate API calls (replace with real calls)
   if (step.id === 'stripe') {
+    if (member.desk === 'partner' || member.desk === 'community') {
+      return { status: 'skipped', note: 'Skipped — Stripe billing not required for Partners or Community Members' };
+    }
     return await callStripe(member, deskLabel);
   }
   if (step.id === 'stripe_cancel') {
@@ -1240,30 +1241,39 @@ async function callStripeCancel(member) {
 
 async function callHubspot(member, isRemove) {
   try {
-    if (isRemove) {
-      // Lookup by email first
-      return { status: 'done', note: 'Contact marked inactive in HubSpot' };
-    }
-    const res = await fetch('https://api.hubapi.com/crm/v3/objects/contacts', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${settings.hubspot_key}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        properties: {
+    const url = isRemove
+      ? `https://api.hubapi.com/crm/v3/objects/contacts/${encodeURIComponent(member.email)}?idProperty=email`
+      : 'https://api.hubapi.com/crm/v3/objects/contacts';
+    const method = isRemove ? 'PATCH' : 'POST';
+    const body = isRemove
+      ? JSON.stringify({ properties: { hs_lead_status: 'UNQUALIFIED' } })
+      : JSON.stringify({ properties: {
           email: member.email,
           firstname: member.first,
           lastname: member.last,
           company: member.company || '',
           hs_lead_status: 'CONNECTED'
-        }
-      })
+        }});
+    const res = await fetch(url, {
+      method,
+      headers: {
+        'Authorization': `Bearer ${settings.hubspot_key}`,
+        'Content-Type': 'application/json'
+      },
+      body
     });
+    if (!res.ok) {
+      const err = await res.json();
+      // 409 = contact already exists, treat as success
+      if (res.status === 409) return { status: 'done', note: 'Contact already exists in HubSpot' };
+      return { status: 'error', note: err.message || `HTTP ${res.status}` };
+    }
     const data = await res.json();
-    if (data.status === 'error') return { status: 'error', note: data.message };
-    return { status: 'done', note: `Contact added: ${data.id}` };
+    return { status: 'done', note: isRemove ? 'Contact updated in HubSpot' : `Contact added: ${data.id}` };
   } catch(e) {
+    if (e.message === 'Failed to fetch') {
+      return { status: 'manual', note: 'CORS blocked — add contact manually in HubSpot, or use the HubSpot Chrome extension' };
+    }
     return { status: 'error', note: e.message };
   }
 }
@@ -1515,12 +1525,6 @@ function renderSettings() {
     </div>
 
     <div class="card">
-      <div class="card-title">Google Sheets</div>
-      ${settingRow('sheets_id', 'Spreadsheet ID', '1BxiMVs0...', 'text', 'Found in the URL of your MASTER Google Sheet')}
-      ${settingRow('google_key', 'OAuth Access Token', 'ya29...', 'password', 'Use Google OAuth — regenerate as needed')}
-    </div>
-
-    <div class="card">
       <div class="card-title">SignRequest</div>
       ${settingRow('signrequest_key', 'API Token', 'Token ...', 'password', 'SignRequest → API → Token auth')}
       ${settingRow('signrequest_doc_url', 'Document URL', 'https://signrequest.com/...', 'text', 'URL of your handbook template in SignRequest')}
@@ -1575,7 +1579,7 @@ function toggleVis(id, btn) {
 function saveSetting(key, val) { settings[key] = val; saveSettings(); }
 
 function saveAllSettings() {
-  const keys = ['stripe_key','stripe_price_floating','stripe_price_dedicated','hubspot_key','sheets_id','google_key','signrequest_key','signrequest_doc_url','unico_email','from_email','emailjs_service_id','emailjs_welcome_template','emailjs_unico_template','emailjs_public_key'];
+  const keys = ['stripe_key','stripe_price_floating','stripe_price_dedicated','hubspot_key','signrequest_key','signrequest_doc_url','unico_email','from_email','emailjs_service_id','emailjs_welcome_template','emailjs_unico_template','emailjs_public_key'];
   keys.forEach(k => {
     const el = document.getElementById(`setting-${k}`);
     if (el) settings[k] = el.value.trim();
