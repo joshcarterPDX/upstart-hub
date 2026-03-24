@@ -1717,10 +1717,12 @@ netlifyIdentity.on('logout', () => {
 })();
 if (sessionStorage.getItem('usc_auth') === '1') { handleLogin(); }
 
-// Wire up auth button via event listeners (more reliable than onclick)
-document.getElementById('signin-btn').addEventListener('click', checkPassword);
-document.getElementById('password-input').addEventListener('keydown', function(e) {
-  if (e.key === 'Enter') checkPassword();
+// Wire up auth button after DOM is ready
+document.addEventListener('DOMContentLoaded', function() {
+  document.getElementById('signin-btn').addEventListener('click', checkPassword);
+  document.getElementById('password-input').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') checkPassword();
+  });
 });
 </script>
 </body>
