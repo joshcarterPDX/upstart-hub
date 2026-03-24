@@ -1266,6 +1266,7 @@ function renderRoster() {
       </select>
       <input type="file" accept=".csv" style="display:none" id="csv-upload" onchange="importCSV(this)" />
       <button class="btn btn-ghost" style="font-size:13px;padding:8px 14px;" onclick="document.getElementById('csv-upload').click()">Import CSV</button>
+      <button class="btn btn-ghost" style="font-size:13px;padding:8px 14px;" onclick="exportCSV()">Export CSV</button>
     </div>
     <div class="card" style="padding:0;overflow:hidden;">
       ${filtered.length === 0 ? `<div class="empty-state"><div class="empty-state-icon">&#9711;</div><p>No members found</p></div>` : `
@@ -1634,6 +1635,37 @@ function importCSV(input) {
     renderRoster();
   };
   reader.readAsText(file);
+}
+
+// ─── Export ──────────────────────────────────────────────────────────────────
+function exportCSV() {
+  const headers = ['First Name', 'Last Name', 'Email', 'Company', 'Membership Type', 'Status', 'Signed Pledge', 'Start Date', 'Added'];
+  const rows = members.map(m => [
+    m.first,
+    m.last,
+    m.email,
+    m.company || '',
+    m.membership_type || m.desk,
+    m.status,
+    m.signed_pledge ? 'Yes' : 'No',
+    m.start_date || '',
+    m.added ? m.added.split('T')[0] : ''
+  ]);
+
+  const csv = [headers, ...rows]
+    .map(row => row.map(cell => `"${(cell||'').replace(/"/g, '""')}"`).join(','))
+    .join('
+');
+
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const date = new Date().toISOString().split('T')[0];
+  a.href = url;
+  a.download = `UpStart-Members-${date}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('Exported ' + members.length + ' members');
 }
 
 // ─── Utilities ───────────────────────────────────────────────────────────────
