@@ -55,7 +55,7 @@ Wait about 60 seconds, then hard-refresh the app (Cmd+Shift+R on Mac, Ctrl+Shift
 Login & Password
 The app is protected by a password. The default password is:
 
-upstart2024
+XXXXXXXX
 
 
 To change the password, open index.html in any text editor (TextEdit on Mac, Notepad on Windows), find this line near the bottom of the file, and change the value:
