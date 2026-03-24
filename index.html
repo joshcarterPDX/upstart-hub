@@ -1723,22 +1723,12 @@ function handleLogin() {
 }
 
 function handleLogout() {
-  netlifyIdentity.logout();
-}
-
-netlifyIdentity.on('login', user => {
-  netlifyIdentity.close();
-  handleLogin(user);
-});
-
-netlifyIdentity.on('logout', () => {
+  sessionStorage.removeItem('usc_auth');
   document.getElementById('app-shell').classList.remove('visible');
   document.getElementById('auth-gate').classList.add('visible');
   document.getElementById('user-pill').style.display = 'none';
-});
-
-// Check if already logged in
-// ─── Password Auth (defined at top of script) ───────────────────────────────
+  document.getElementById('password-input').value = '';
+}
 
 // ─── Init ────────────────────────────────────────────────────────────────────
 // Pre-load roster if no members exist yet
