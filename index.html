@@ -645,6 +645,61 @@
 
 <div class="toast" id="toast"></div>
 
+<!-- Edit Member Modal -->
+<div id="edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:200;align-items:center;justify-content:center;padding:24px;">
+  <div style="background:var(--surface);border-radius:var(--radius-lg);border:1px solid var(--border);padding:32px;width:100%;max-width:480px;max-height:90vh;overflow-y:auto;">
+    <div style="font-size:17px;font-weight:600;margin-bottom:4px;">Edit Member</div>
+    <div style="font-size:13px;color:var(--text-2);margin-bottom:24px;" id="edit-modal-sub"></div>
+    <div class="form-grid">
+      <div class="field">
+        <label>First Name</label>
+        <input type="text" id="edit-first" />
+      </div>
+      <div class="field">
+        <label>Last Name</label>
+        <input type="text" id="edit-last" />
+      </div>
+      <div class="field form-full">
+        <label>Email</label>
+        <input type="email" id="edit-email" />
+      </div>
+      <div class="field form-full">
+        <label>Company / Startup</label>
+        <input type="text" id="edit-company" />
+      </div>
+      <div class="field form-full">
+        <label>Membership Type</label>
+        <select id="edit-desk" style="padding:10px 14px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--sans);font-size:14px;background:var(--bg);color:var(--text);outline:none;">
+          <option value="floating">Floating Desk</option>
+          <option value="dedicated">Dedicated Desk</option>
+          <option value="partner">Partner</option>
+          <option value="community">Community Member</option>
+        </select>
+      </div>
+      <div class="field form-full">
+        <label>Start Date</label>
+        <input type="date" id="edit-start-date" />
+      </div>
+      <div class="field form-full">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+          <input type="checkbox" id="edit-pledge" style="width:16px;height:16px;" />
+          Pledge / Handbook Signed
+        </label>
+      </div>
+      <div class="field form-full">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+          <input type="checkbox" id="edit-active" style="width:16px;height:16px;" />
+          Active Member
+        </label>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:24px;">
+      <button class="btn btn-primary" onclick="saveEdit()">Save Changes</button>
+      <button class="btn btn-ghost" onclick="closeEditModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ─── Auth (defined first so onclick handlers work immediately) ───────────────
 const APP_PASSWORD = 'upstart2024';
@@ -1226,7 +1281,10 @@ function renderRoster() {
                 <td><span class="badge ${getDeskBadgeClass(m.desk)}">${m.membership_type || m.desk}</span></td>
                 <td style="font-size:13px;">${m.signed_pledge ? '<span style="color:var(--success)">&#10003; Signed</span>' : '<span style="color:var(--text-3)">&#8212;</span>'}</td>
                 <td><span class="badge ${m.status === 'active' ? 'badge-active' : 'badge-inactive'}">${m.status}</span></td>
-                <td>${m.status === 'active' ? `<button class="action-btn danger-btn" onclick="promptOffboard('${m.id}')">Offboard</button>` : ''}</td>
+                <td style="display:flex;gap:6px;">
+                  <button class="action-btn" onclick="openEditModal('${m.id}')">Edit</button>
+                  ${m.status === 'active' ? `<button class="action-btn danger-btn" onclick="promptOffboard('${m.id}')">Offboard</button>` : ''}
+                </td>
               </tr>
             `).join('')}
           </tbody>
@@ -1484,6 +1542,58 @@ function resetTemplatesDefault() {
   saveTemplates();
   renderTemplates();
   showToast('Templates reset to default');
+}
+
+// ─── Edit Member ─────────────────────────────────────────────────────────────
+let editingMemberId = null;
+
+function openEditModal(id) {
+  const m = members.find(x => x.id === id);
+  if (!m) return;
+  editingMemberId = id;
+
+  document.getElementById('edit-modal-sub').textContent = m.email;
+  document.getElementById('edit-first').value = m.first || '';
+  document.getElementById('edit-last').value = m.last || '';
+  document.getElementById('edit-email').value = m.email || '';
+  document.getElementById('edit-company').value = m.company || '';
+  document.getElementById('edit-start-date').value = m.start_date || '';
+  document.getElementById('edit-pledge').checked = !!m.signed_pledge;
+  document.getElementById('edit-active').checked = m.status === 'active';
+
+  const deskSel = document.getElementById('edit-desk');
+  deskSel.value = m.desk || 'floating';
+
+  const modal = document.getElementById('edit-modal');
+  modal.style.display = 'flex';
+}
+
+function closeEditModal() {
+  document.getElementById('edit-modal').style.display = 'none';
+  editingMemberId = null;
+}
+
+function saveEdit() {
+  const m = members.find(x => x.id === editingMemberId);
+  if (!m) return;
+
+  const deskVal = document.getElementById('edit-desk').value;
+  const deskTypeMap = { floating: 'Floating Desk', dedicated: 'Dedicated Desk', partner: 'Partner', community: 'Community Member' };
+
+  m.first = document.getElementById('edit-first').value.trim();
+  m.last = document.getElementById('edit-last').value.trim();
+  m.email = document.getElementById('edit-email').value.trim();
+  m.company = document.getElementById('edit-company').value.trim();
+  m.desk = deskVal;
+  m.membership_type = deskTypeMap[deskVal];
+  m.start_date = document.getElementById('edit-start-date').value;
+  m.signed_pledge = document.getElementById('edit-pledge').checked;
+  m.status = document.getElementById('edit-active').checked ? 'active' : 'inactive';
+
+  saveMembers();
+  closeEditModal();
+  showToast(`${m.first} ${m.last} updated`);
+  renderRoster();
 }
 
 // ─── CSV Import ──────────────────────────────────────────────────────────────
