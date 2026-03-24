@@ -1109,6 +1109,12 @@ async function executeStep(step, member, mode) {
 
   const apiStatus = getApiStatus(step.tag);
 
+  // Skip Unico email for Partner and Community Member
+  if ((step.id === 'unico_email' || step.id === 'offboard_email') && 
+      (member.desk === 'partner' || member.desk === 'community')) {
+    return { status: 'skipped', note: 'Skipped — Unico access not required for Partners or Community Members' };
+  }
+
   // Email steps via EmailJS
   if (step.tag === 'gmail') {
     const isWelcome = step.id === 'welcome_email';
